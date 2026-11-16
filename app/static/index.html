@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TeamOptimizer</title>
+<style>
+:root{--bg:#f2f3f5;--pn:#fff;--ink:#1e2227;--mut:#656d76;--ln:#dde0e4;--ac:#38424d;--soft:#eceef1;--ok:#3d6a57;--bad:#a24a42}
+*{box-sizing:border-box}
+body{margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--ink);font:14px/1.5 "Segoe UI",system-ui,-apple-system,sans-serif;font-variant-numeric:tabular-nums}
+aside{width:210px;flex:none;background:var(--pn);border-right:1px solid var(--ln);padding:18px 10px;position:sticky;top:0;height:100vh}
+.brand{font-size:16px;font-weight:700;padding:2px 10px 12px}
+aside h6{margin:14px 10px 4px;font-size:12px;font-weight:600;color:var(--mut)}
+aside a{display:block;padding:7px 10px;border-radius:7px;cursor:pointer}aside a:hover{background:var(--soft)}aside a.on{background:var(--ac);color:#fff}
+.main{flex:1;min-width:0}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 28px;background:var(--pn);border-bottom:1px solid var(--ln);position:sticky;top:0;z-index:2}
+h1{margin:0;font-size:18px}#msg{margin-right:12px;color:var(--mut)}#msg.bad{color:var(--bad)}
+#view{padding:22px 28px;max-width:1120px}
+.card{background:var(--pn);border:1px solid var(--ln);border-radius:10px;padding:16px;margin-bottom:16px}.card h3{margin:0 0 10px;font-size:14px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px}
+.kpi{padding:9px 12px;border-left:3px solid var(--ac);background:var(--pn);border-radius:3px 10px 10px 3px}.kpi b{display:block;font-size:20px}.kpi span{color:var(--mut);font-size:12px}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-bottom:16px}.cols>.card{margin:0}
+table{width:100%;border-collapse:collapse}th,td{padding:5px 6px;text-align:left;border-bottom:1px solid var(--ln)}th{font-size:12px;font-weight:600;color:var(--mut)}
+input,select{width:100%;padding:6px 8px;border:1px solid var(--ln);border-radius:7px;background:#fff;color:inherit;font:inherit}
+input:focus,select:focus,button:focus-visible{outline:2px solid var(--ac);outline-offset:1px}input[type=range]{padding:0}input[type=checkbox]{width:auto}
+button{border:0;border-radius:7px;padding:8px 14px;background:var(--ac);color:#fff;font-weight:600;font-size:13px;font-family:inherit;cursor:pointer}
+button.s{background:var(--soft);color:var(--ink)}button.x{background:none;color:var(--bad);padding:4px 8px}
+.bar{height:7px;background:var(--soft);border-radius:9px;overflow:hidden}.bar i{display:block;height:100%;background:#8c949d}
+.row{display:grid;grid-template-columns:150px 1fr 56px;gap:10px;align-items:center;margin:8px 0}.row>b{text-align:right}
+.tag{display:inline-block;background:var(--soft);border-radius:9px;padding:0 8px;margin:2px 4px 2px 0;font-size:12px}
+.ok{color:var(--ok)}.bad{color:var(--bad)}.mut{color:var(--mut)}code{background:var(--soft);padding:1px 5px;border-radius:5px}
+@media(max-width:800px){body{display:block}aside{width:auto;height:auto;position:static;display:flex;overflow-x:auto;padding:8px}aside nav{display:flex}aside h6,.brand{display:none}#view,header{padding:14px}.row{grid-template-columns:100px 1fr 48px}}
+</style></head>
+<body>
+<aside><div class="brand">TeamOptimizer</div><nav id="nav"></nav></aside>
+<div class="main"><header><h1 id="title"></h1><div><span id="msg"></span><button id="run">Рассчитать распределение</button></div></header><section id="view"></section></div>
+<script>
+const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>'&#'+c.charCodeAt(0)+';'),pc=x=>Math.round(x*100)+'%';
+async function api(m,u,b){const r=await fetch(u,{method:m,headers:{'Content-Type':'application/json'},body:b&&JSON.stringify(b)}),j=await r.json().catch(()=>({}));if(!r.ok)throw Error(j.detail||r.status);return j}
+const say=(t,bad)=>{$('#msg').textContent=t;$('#msg').className=bad?'bad':''};
+const bar=(v,m,c)=>`<div class="bar"><i style="width:${m?Math.min(100,v/m*100):0}%;${c?'background:'+c:''}"></i></div>`;
+const kpi=a=>`<div class="kpis">${a.map(k=>`<div class="kpi"><b>${k[0]}</b><span>${k[1]}</span></div>`).join('')}</div>`;
+const cell=(t,r,k,ty='text')=>`<input type="${ty}" data-t="${t}" data-i="${r.id}" data-k="${k}" value="${esc(r[k])}">`;
+const tbl=(t,head,rows,f)=>`<div class="card"><table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}<th></th></tr></thead><tbody>${rows.map(r=>`<tr>${f(r).map(c=>`<td>${c}</td>`).join('')}<td><button class="x" data-del="${t}/${r.id}" title="Удалить">×</button></td></tr>`).join('')}</tbody></table><p><button class="s" data-add="${t}">Добавить</button></p></div>`;
+const TABS=[['stats','Обзор','Главное'],['people','Участники','Данные'],['projects','Проекты','Данные'],['tasks','Задачи','Данные'],['cfg','Критерии','Расчёт'],['result','Результат','Расчёт'],['runs','История','Расчёт']];
+const CRIT={skills:'Покрытие навыков и задач',exp:'Баланс опыта',pref:'Предпочтения',size:'Баланс численности'};
+let last=null,cur='stats';
+const V={
+async stats(){const s=await api('GET','/api/stats'),mx=Math.max(1,...s.skills.flatMap(k=>[k.demand,k.capacity])),eh=Math.max(1,...s.exp_hist),pm=Math.max(1,...s.projects.map(p=>p.demand));
+return kpi([[s.n_people,'Участников'],[s.n_projects,'Проектов'],[s.n_tasks,'Задач'],[s.demand+' ч','Потребность'],[s.capacity+' ч','Ёмкость команды'],[s.avg_exp.toFixed(1),'Средний опыт'],[s.feasible?'да':'нет','Размеры команд выполнимы']])
++`<div class="cols"><div class="card"><h3>Навыки: потребность (серая) и ёмкость (зелёная), ч</h3>${s.skills.map(k=>`<div class="row"><span>${esc(k.skill)} <small class="mut">${k.people} чел.</small></span><div>${bar(k.demand,mx)}<div style="height:3px"></div>${bar(k.capacity,mx,'var(--ok)')}</div><b class="${k.capacity<k.demand?'bad':'ok'}">${k.capacity-k.demand}</b></div>`).join('')||'<span class="mut">Нет данных</span>'}</div>
+<div class="card"><h3>Распределение опыта</h3>${s.exp_hist.map((n,i)=>`<div class="row"><span>Уровень ${i+1}</span>${bar(n,eh)}<b>${n}</b></div>`).join('')}</div>
+<div class="card"><h3>Потребность по проектам, ч</h3>${s.projects.map(p=>`<div class="row"><span>${esc(p.name)}</span>${bar(p.demand,pm)}<b>${p.demand}</b></div>`).join('')||'<span class="mut">Нет проектов</span>'}</div></div>`},
+async people(){const d=await api('GET','/api/state');return tbl('people',['Участник','Навыки (через запятую)','Опыт 1–5','Предпочтение','Часов в неделю'],d.people,r=>[cell('people',r,'name'),cell('people',r,'skills'),cell('people',r,'exp','number'),cell('people',r,'pref'),cell('people',r,'hours','number')])},
+async projects(){const[d,s]=await Promise.all([api('GET','/api/state'),api('GET','/api/stats')]);return tbl('projects',['Проект','Требуемые навыки','Задач','Потребность, ч'],d.projects,r=>{const p=s.projects.find(x=>x.id===r.id)||{};return[cell('projects',r,'name'),cell('projects',r,'skills'),p.tasks,p.demand]})},
+async tasks(){const d=await api('GET','/api/state');
+const sel=r=>`<select data-t="tasks" data-i="${r.id}" data-k="project_id">${d.projects.map(p=>`<option value="${p.id}"${p.id===r.project_id?' selected':''}>${esc(p.name)}</option>`).join('')}</select>`;
+return `<div class="card mut">Задачи вводить необязательно. Если у проекта есть задачи, потребность в навыке считается как сумма (часы × приоритет ÷ 3) и заменяет требуемые навыки проекта; без задач — 16 ч × недели на каждый навык проекта. Ёмкость человека = часы в неделю × недели × (опыт ÷ 5) ÷ число его навыков. Оптимизатор максимизирует покрытие этой потребности.</div>`
++(d.projects.length?tbl('tasks',['Задача','Проект','Навык','Трудоёмкость, ч','Приоритет 1–5'],d.tasks,r=>[cell('tasks',r,'title'),sel(r),cell('tasks',r,'skill'),cell('tasks',r,'hours','number'),cell('tasks',r,'priority','number')]):'<div class="card mut">Сначала добавьте проект.</div>')},
+async cfg(){const c=(await api('GET','/api/state')).cfg,w=c.weights,sum=Object.values(w).reduce((a,b)=>a+b,0)||1;
+return `<div class="card"><h3>Веса критериев (нормируются до 100%)</h3>${Object.keys(CRIT).map(k=>`<div class="row"><label>${CRIT[k]}</label><input type="range" min="0" max="100" value="${w[k]}" data-w="${k}"><b id="w_${k}">${Math.round(w[k]/sum*100)}%</b></div>`).join('')}</div>
+<div class="card"><h3>Ограничения и параметры решателя</h3><div class="cols">${[['min_size','Минимум в команде'],['max_size','Максимум в команде'],['weeks','Горизонт, недель'],['seed','Seed (воспроизводимость)'],['time_limit','Лимит времени, с']].map(([k,l])=>`<label>${l}<input type="number" data-c="${k}" value="${c[k]}"></label>`).join('')}<label><input type="checkbox" data-c="use_tasks" ${c.use_tasks?'checked':''}> Учитывать задачи в потребности</label></div></div>`},
+async result(){if(!last){const r=await api('GET','/api/runs');if(!r.length)return '<div class="card mut">Расчётов пока нет. Нажмите «Рассчитать распределение».</div>';last=await api('GET','/api/runs/'+r[0].id)}
+const v=last.verify,s=last.solver;
+return kpi([[pc(v.total),'Итоговая оценка'],[last.status==='OPTIMAL'?'Оптимум':'Допустимое','Статус решателя'],[(s.gap*100).toFixed(2)+'%','Разрыв с границей'],[s.seconds+' с','Время расчёта'],[last.result_hash.slice(0,8),'Хэш решения']])
++`<div class="card"><h3>Проверка</h3>${v.ok?'<span class="ok">Независимый пересчёт подтвердил ограничения и оценки.</span>':'<span class="bad">Нарушения: '+v.violations.map(esc).join('; ')+'</span>'} <button class="s" data-act="replay" data-arg="${last.run_id}">Проверить воспроизводимость</button></div>`
++`<div class="card"><h3>Вклад критериев</h3>${Object.keys(CRIT).map(k=>`<div class="row"><span>${CRIT[k]}</span>${bar(v.scores[k],1)}<b>${pc(v.scores[k])}</b></div>`).join('')}<small class="mut">Решатель: переменных ${s.variables}, ограничений ${s.constraints}, ветвлений ${s.branches}, конфликтов ${s.conflicts}.</small></div>`
++`<div class="cols">${v.teams.map(t=>`<div class="card"><h3>${esc(t.name)}</h3><small class="mut">${t.size} чел., средний опыт ${t.avg_exp.toFixed(1)}, загрузка ${pc(t.utilization)}</small>${bar(t.coverage,1,'var(--ok)')}<small>Покрытие потребности ${pc(t.coverage)} (${t.covered} из ${t.demand} ч)</small><div>${t.missing.map(m=>`<span class="tag bad">не закрыт навык: ${esc(m)}</span>`).join('')}</div>${t.members.map(m=>`<div>${esc(m.name)} <span class="mut">${esc(m.skills.join(', '))}, опыт ${m.exp}</span>${m.pref_ok?' <span class="ok" title="предпочтение учтено">★</span>':''}</div>`).join('')}</div>`).join('')}</div>`},
+async runs(){const r=await api('GET','/api/runs');return `<div class="card"><table><thead><tr><th>№</th><th>Время</th><th>Статус</th><th>Оценка</th><th>Вход</th><th>Решение</th><th></th></tr></thead><tbody>${r.map(x=>`<tr><td>${x.id}</td><td>${new Date(x.created).toLocaleString('ru')}</td><td>${x.status}</td><td>${pc(x.total)}</td><td><code>${x.input_hash.slice(0,8)}</code></td><td><code>${x.result_hash.slice(0,8)}</code></td><td><button class="s" data-act="open" data-arg="${x.id}">Открыть</button> <button class="s" data-act="replay" data-arg="${x.id}">Повторить</button></td></tr>`).join('')}</tbody></table>${r.length?'':'<p class="mut">Запусков пока нет.</p>'}</div>`}};
+const ACT={
+async replay(i){say('Повторный расчёт…');const r=await api('POST',`/api/runs/${i}/replay`);say(r.reproducible?`Воспроизведено: решение совпало (${r.result_hash.slice(0,8)})`:'Решение отличается от сохранённого',!r.reproducible)},
+async open(i){last=await api('GET','/api/runs/'+i);go('result')}};
+async function show(){$('#title').textContent=TABS.find(t=>t[0]===cur)[1];document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.dataset.tab===cur));
+try{$('#view').innerHTML=await V[cur]()}catch(x){$('#view').innerHTML=`<div class="card bad">Не удалось получить данные: ${esc(x.message)}</div>`}}
+const go=t=>{cur=t;location.hash=t;show()};
+$('#nav').innerHTML=TABS.map((t,i)=>(i&&TABS[i-1][2]===t[2]?'':`<h6>${t[2]}</h6>`)+`<a data-tab="${t[0]}">${t[1]}</a>`).join('');
+$('#nav').onclick=e=>e.target.dataset.tab&&go(e.target.dataset.tab);
+$('#run').onclick=async()=>{try{say('Расчёт…');last=await api('POST','/api/optimize');say('Готово');go('result')}catch(x){say(x.message,1)}};
+document.addEventListener('click',async e=>{const b=e.target.closest('button'),d=b&&b.dataset;if(!d)return;try{
+if(d.add){const body=d.add==='tasks'?{project_id:(await api('GET','/api/state')).projects[0].id}:{};await api('POST','/api/'+d.add,body);show()}
+else if(d.del){await api('DELETE','/api/'+d.del);show()}
+else if(d.act)await ACT[d.act](d.arg)}catch(x){say(x.message,1)}});
+document.addEventListener('change',async e=>{const t=e.target,d=t.dataset;try{
+if(d.t)await api('PATCH',`/api/${d.t}/${d.i}`,{[d.k]:t.type==='number'||d.k==='project_id'?+t.value:t.value});
+else if(d.w){const w={};document.querySelectorAll('[data-w]').forEach(i=>w[i.dataset.w]=+i.value);await api('PUT','/api/settings',{weights:w})}
+else if(d.c)await api('PUT','/api/settings',{[d.c]:t.type==='checkbox'?t.checked:+t.value});else return;
+say('Сохранено')}catch(x){say(x.message,1)}});
+document.addEventListener('input',e=>{if(e.target.dataset.w){const a=[...document.querySelectorAll('[data-w]')],s=a.reduce((x,i)=>x+ +i.value,0)||1;a.forEach(i=>$('#w_'+i.dataset.w).textContent=Math.round(i.value/s*100)+'%')}});
+if(V[location.hash.slice(1)])cur=location.hash.slice(1);show();
+</script></body></html>
